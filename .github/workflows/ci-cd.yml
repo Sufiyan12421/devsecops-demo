@@ -80,7 +80,7 @@ jobs:
           path: dist/
 
   # ----------------------
-  # 4️⃣ Docker Build & Push
+  # 4️⃣ Docker Build, Trivy Scan & Push
   # ----------------------
   docker:
     name: Docker Build and Push
@@ -136,23 +136,26 @@ jobs:
         id: set_output
         run: echo "image_tag=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
+      - name: Tag Docker image for Trivy
+        run: |
+          docker tag devsecops-demo:${{ github.sha | cut -c1-7 }} ghcr.io/${{ github.repository }}:${{ github.sha | cut -c1-7 }}
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.set_output.outputs.image_tag }}
-          format: 'table'
-          exit-code: '1'
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha | cut -c1-7 }}
+          format: table
+          exit-code: 1
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 
       - name: Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha | cut -c1-7 }}
 
   # ----------------------
   # 5️⃣ Update Kubernetes Deployment
