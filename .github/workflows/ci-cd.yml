@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - 'kubernetes/deployment.yaml'  # Prevent workflow loops
+      - 'kubernetes/deployment.yaml'
   pull_request:
     branches: [ main ]
 
@@ -116,14 +116,17 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
 
       - name: Build Docker image with short SHA
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          load: true
-          tags: |
-            devsecops-demo:${{ steps.set_output.outputs.image_tag }}
-            ghcr.io/${{ github.repository }}:latest
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          REPO_LOWER=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          docker buildx build \
+            --tag devsecops-demo:${IMAGE_TAG} \
+            --tag ghcr.io/${REPO_LOWER}:latest \
+            --load \
+            .
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Tag Docker image for GHCR
         run: |
