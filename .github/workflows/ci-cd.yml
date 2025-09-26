@@ -88,8 +88,6 @@ jobs:
     needs: [build]
     env:
       REGISTRY: ghcr.io
-    outputs:
-      image_tag: ${{ steps.set_output.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +97,7 @@ jobs:
           name: build-artifacts
           path: dist/
 
-      - name: Set up Docker Buildx
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
@@ -109,10 +107,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.TOKEN }}
 
-      - name: Build Docker image
+      - name: Build and tag Docker image
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          REPO_LOWER=${GITHUB_REPOSITORY,,} # lowercase repo name
+          REPO_LOWER=${GITHUB_REPOSITORY,,} # lowercase
           docker buildx build \
             --tag devsecops-demo:${IMAGE_TAG} \
             --load \
@@ -123,23 +121,19 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: Set image tag output
-        id: set_output
-        run: echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+      - name: Run Trivy vulnerability scanner
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          REPO_LOWER=${GITHUB_REPOSITORY,,}
+          $HOME/.local/bin/trivy-bin/trivy image ghcr.io/${REPO_LOWER}:${IMAGE_TAG} \
+            --exit-code 1 \
+            --severity CRITICAL,HIGH
         env:
           GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          HOME: ${{ github.home }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/${{ github.repository.toLower() }}:${{ github.sha.substring(0,7) }}
-          format: table
-          exit-code: 1
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL,HIGH
-
-      - name: Push Docker image
+      - name: Push Docker image to GHCR
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
           REPO_LOWER=${GITHUB_REPOSITORY,,}
@@ -168,20 +162,22 @@ jobs:
           git config user.email "actions@github.com"
 
       - name: Update Kubernetes deployment file
-        env:
-          IMAGE_TAG: ${{ needs.docker.outputs.image_tag }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          REGISTRY: ghcr.io
         run: |
-          NEW_IMAGE="${REGISTRY}/${GITHUB_REPOSITORY,,}:${IMAGE_TAG}"
-          sed -i "s|image: ${REGISTRY}/.*|image: ${NEW_IMAGE}|g" kubernetes/deployment.yaml
+          IMAGE_TAG=${GITHUB_SHA::7}
+          REPO_LOWER=${GITHUB_REPOSITORY,,}
+          NEW_IMAGE="ghcr.io/${REPO_LOWER}:${IMAGE_TAG}"
+          sed -i "s|image: ghcr.io/.*|image: ${NEW_IMAGE}|g" kubernetes/deployment.yaml
           echo "Updated deployment to use image: ${NEW_IMAGE}"
           grep -A 1 "image:" kubernetes/deployment.yaml
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Commit and push changes
-        env:
-          TOKEN: ${{ secrets.TOKEN }}
         run: |
           git add kubernetes/deployment.yaml
-          git commit -m "Update Kubernetes deployment with new image tag: ${{ needs.docker.outputs.image_tag }} [skip ci]" || echo "No changes to commit"
-          git push https://x-access-token:$TOKEN@github.com/${{ github.repository }} HEAD:main
+          git commit -m "Update Kubernetes deployment with new image tag: ${GITHUB_SHA::7} [skip ci]" || echo "No changes to commit"
+          git push https://x-access-token:${{ secrets.TOKEN }}@github.com/${GITHUB_REPOSITORY} HEAD:main
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
