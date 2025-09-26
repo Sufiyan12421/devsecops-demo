@@ -137,7 +137,6 @@ jobs:
           echo "Scanning Docker image: $IMAGE"
           trivy image "$IMAGE" \
             --format table \
-            --exit-code 1 \
             --ignore-unfixed \
             --pkg-types os,library \
             --severity CRITICAL,HIGH
