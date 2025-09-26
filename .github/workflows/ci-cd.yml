@@ -142,8 +142,6 @@ jobs:
           IMAGE_TAG=${{ steps.set_output.outputs.image_tag }}
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           docker tag devsecops-demo:${IMAGE_TAG} ghcr.io/${REPO_LOWER}:${IMAGE_TAG}
-        env:
-          GITHUB_SHA: ${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -156,11 +154,10 @@ jobs:
           severity: CRITICAL,HIGH
 
       - name: Push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository | toLowerCase }}:${{ steps.set_output.outputs.image_tag }}
+        run: |
+          IMAGE_TAG=${{ steps.set_output.outputs.image_tag }}
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          docker push ghcr.io/${REPO_LOWER}:${IMAGE_TAG}
 
   # ----------------------
   # 5️⃣ Update Kubernetes Deployment
