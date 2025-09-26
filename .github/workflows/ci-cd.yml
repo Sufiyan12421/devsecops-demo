@@ -79,12 +79,15 @@ jobs:
     needs: [build]
     env:
       REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository }}
     outputs:
       image_tag: ${{ steps.set_output.outputs.image_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Convert repository name to lowercase
+        id: repo_name
+        run: echo "lowercase_repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -116,7 +119,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.lowercase_repo }}
           tags: |
             type=sha,format=long
             type=ref,event=branch
@@ -164,6 +167,9 @@ jobs:
         with:
           token: ${{ secrets.TOKEN }}
 
+      - name: Convert repository name to lowercase
+        run: echo "lowercase_repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Setup Git config
         run: |
           git config user.name "GitHub Actions"
@@ -177,7 +183,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           REGISTRY: ghcr.io
-          REPOSITORY: ${{ github.repository }}
+          REPOSITORY: ${{ env.lowercase_repo }}
         run: |
           NEW_IMAGE="${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}"
           sed -i "s|image: ${REGISTRY}/.*|image: ${NEW_IMAGE}|g" kubernetes/deployment.yaml
