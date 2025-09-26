@@ -1,4 +1,4 @@
-name: CI/CD Pipeline with Kubernetes
+name: CI/CD Pipeline
 
 on:
   push:
@@ -6,29 +6,24 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  IMAGE_NAME: ghcr.io/sufiyan12421/devsecops-demo
+
 jobs:
-  build-scan-deploy:
+  build-and-scan:
+    name: Build, Scan, and Push Docker Image
     runs-on: ubuntu-latest
-    env:
-      IMAGE_NAME: ghcr.io/sufiyan12421/devsecops-demo
-      IMAGE_TAG: sha-${{ github.sha }}
-      KUBE_NAMESPACE: devsecops-demo
 
     steps:
-      # 1️⃣ Checkout code
-      - name: Checkout repository
+      # 1️⃣ Checkout the repository
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       # 2️⃣ Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3️⃣ Build Docker image
-      - name: Build Docker image
-        run: |
-          docker build -t $IMAGE_NAME:$IMAGE_TAG .
-
-      # 4️⃣ Log in to GitHub Container Registry
+      # 3️⃣ Log in to GHCR
       - name: Log in to GHCR
         uses: docker/login-action@v2
         with:
@@ -36,41 +31,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5️⃣ Push Docker image
-      - name: Push Docker image
+      # 4️⃣ Build the Docker image
+      - name: Build Docker image
+        id: build-image
         run: |
-          docker push $IMAGE_NAME:$IMAGE_TAG
+          docker build -t $IMAGE_NAME:latest .
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          docker tag $IMAGE_NAME:latest $IMAGE_NAME:$IMAGE_TAG
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      # 6️⃣ Setup Trivy
+      # 5️⃣ Set up Trivy
       - name: Setup Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          version: 0.65.0
+          version: latest  # use 'latest' to avoid missing versions
 
-      # 7️⃣ Trivy scan for vulnerabilities
-      - name: Trivy scan
+      # 6️⃣ Scan Docker image
+      - name: Scan Docker Image
         run: |
-          # Scan for HIGH+CRITICAL but never fail
-          trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 $IMAGE_NAME:$IMAGE_TAG
-          # Fail only if CRITICAL exists
-          trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 $IMAGE_NAME:$IMAGE_TAG
+          docker images
+          IMAGE_TAG=${{ steps.build-image.outputs.IMAGE_TAG }}
+          trivy image --exit-code 1 --severity HIGH,CRITICAL $IMAGE_NAME:$IMAGE_TAG
 
-      # 8️⃣ Set up kubectl
-      - name: Set up kubectl
+      # 7️⃣ Push Docker image
+      - name: Push Docker image
+        run: |
+          IMAGE_TAG=${{ steps.build-image.outputs.IMAGE_TAG }}
+          docker push $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:$IMAGE_TAG
+
+  deploy-to-k8s:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set Kubeconfig
         uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
+          kubeconfig: ${{ secrets.KUBECONFIG }}
 
-      # 9️⃣ Configure Kubeconfig (from secret)
-      - name: Configure kubeconfig
+      - name: Deploy to K8s
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
-
-      # 🔟 Deploy to Kubernetes
-      - name: Deploy to Kubernetes
-        run: |
-          kubectl apply -n $KUBE_NAMESPACE -f k8s/deployment.yaml
-          kubectl apply -n $KUBE_NAMESPACE -f k8s/service.yaml
-          kubectl rollout status deployment/tiktaktoe-demo -n $KUBE_NAMESPACE
+          IMAGE_TAG=${{ needs.build-and-scan.outputs.IMAGE_TAG }}
+          kubectl set image deployment/my-app my-app=$IMAGE_NAME:$IMAGE_TAG -n my-namespace
+          kubectl rollout status deployment/my-app -n my-namespace
