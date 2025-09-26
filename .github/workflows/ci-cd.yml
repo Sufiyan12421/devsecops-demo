@@ -109,39 +109,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.TOKEN }}
 
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}
-          tags: |
-            type=sha,format=short
-            type=ref,event=branch
-            latest
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          load: true
-
-      - name: Show built images
-        run: docker images | grep devsecops-demo
-
-      - name: Set image tag output
+      - name: Set image tag
         id: set_output
         run: echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
         env:
           GITHUB_SHA: ${{ github.sha }}
 
-      - name: Tag Docker image for Trivy
+      - name: Build Docker image with short SHA
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: |
+            devsecops-demo:${{ steps.set_output.outputs.image_tag }}
+            ghcr.io/${{ github.repository }}:latest
+
+      - name: Tag Docker image for GHCR
         run: |
           IMAGE_TAG=${{ steps.set_output.outputs.image_tag }}
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           docker tag devsecops-demo:${IMAGE_TAG} ghcr.io/${REPO_LOWER}:${IMAGE_TAG}
+
+      - name: Show built images
+        run: docker images | grep devsecops-demo
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
