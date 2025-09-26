@@ -1,4 +1,5 @@
 name: CI/CD Pipeline
+
 on:
   push:
     branches: [ main ]
@@ -133,16 +134,21 @@ jobs:
 
       - name: Set image tag output
         id: set_output
-        run: echo "image_tag=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Tag Docker image for Trivy
         run: |
-          docker tag devsecops-demo:${{ github.sha | cut -c1-7 }} ghcr.io/${{ github.repository }}:${{ github.sha | cut -c1-7 }}
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker tag devsecops-demo:${IMAGE_TAG} ghcr.io/${{ github.repository }}:${IMAGE_TAG}
+        env:
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha | cut -c1-7 }}
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha.substring(0,7) }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -154,7 +160,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha | cut -c1-7 }}
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha.substring(0,7) }}
 
   # ----------------------
   # 5️⃣ Update Kubernetes Deployment
