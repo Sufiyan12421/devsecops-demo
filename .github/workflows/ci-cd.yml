@@ -133,13 +133,13 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         run: |
-          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | grep 'sha-' | head -n1)
           echo "Scanning Docker image: $IMAGE"
           trivy image "$IMAGE" \
             --format table \
             --exit-code 1 \
             --ignore-unfixed \
-            --vuln-type os,library \
+            --pkg-types os,library \
             --severity CRITICAL,HIGH
 
       - name: Push Docker image
