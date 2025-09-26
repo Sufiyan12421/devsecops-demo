@@ -140,15 +140,13 @@ jobs:
 
       - name: Tag Docker image for Trivy
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
+          IMAGE_TAG=${{ steps.set_output.outputs.image_tag }}
           docker tag devsecops-demo:${IMAGE_TAG} ghcr.io/${{ github.repository }}:${IMAGE_TAG}
-        env:
-          GITHUB_SHA: ${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha.substring(0,7) }}
+          image-ref: ghcr.io/${{ github.repository }}:${{ steps.set_output.outputs.image_tag }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -160,7 +158,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha.substring(0,7) }}
+          tags: ghcr.io/${{ github.repository }}:${{ steps.set_output.outputs.image_tag }}
 
   # ----------------------
   # 5️⃣ Update Kubernetes Deployment
