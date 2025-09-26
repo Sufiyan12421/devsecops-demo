@@ -26,7 +26,7 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test || echo "No tests found, would add tests in a real project"
+        run: npm test || echo "No tests found"
 
   lint:
     name: Static Code Analysis
@@ -92,7 +92,7 @@ jobs:
           name: build-artifacts
           path: dist/
 
-      - name: Install Trivy via APT
+      - name: Install Trivy
         run: |
           sudo apt update
           sudo apt install -y wget apt-transport-https gnupg lsb-release
@@ -170,13 +170,17 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
+      - name: Set image tag
+        id: set_image
+        run: echo "IMAGE_TAG=sha-${{ github.sha }}" >> $GITHUB_ENV
+
       - name: Update Kubernetes deployment file
         env:
-          IMAGE_TAG: sha-${{ github.sha }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
           REGISTRY: ghcr.io
+          REPOSITORY: ${{ github.repository }}
         run: |
-          NEW_IMAGE="${REGISTRY}/${GITHUB_REPOSITORY}:${IMAGE_TAG}"
+          NEW_IMAGE="${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}"
           sed -i "s|image: ${REGISTRY}/.*|image: ${NEW_IMAGE}|g" kubernetes/deployment.yaml
           echo "Updated deployment to use image: ${NEW_IMAGE}"
           grep -A 1 "image:" kubernetes/deployment.yaml
@@ -184,5 +188,5 @@ jobs:
       - name: Commit and push changes
         run: |
           git add kubernetes/deployment.yaml
-          git commit -m "Update Kubernetes deployment with new image tag: ${{ needs.docker.outputs.image_tag }} [skip ci]" || echo "No changes to commit"
+          git commit -m "Update Kubernetes deployment with new image tag: ${{ env.IMAGE_TAG }} [skip ci]" || echo "No changes to commit"
           git push
